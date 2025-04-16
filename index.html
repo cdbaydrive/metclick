@@ -128,10 +128,21 @@
         }
         updateBPMDisplay();
 
-        // Change BPM with bounds checking
+        // Change BPM with bounds checking and update metronome
         function changeBPM(delta) {
             bpm = Math.min(240, Math.max(30, bpm + delta));
             updateBPMDisplay();
+            if (isRunning) {
+                restartMetronome(); // Update metronome speed if running
+            }
+        }
+
+        // Restart metronome with current BPM
+        function restartMetronome() {
+            if (metronomeInterval) {
+                clearInterval(metronomeInterval);
+            }
+            startMetronome();
         }
 
         // Touch scrolling with inertia for BPM
@@ -142,7 +153,7 @@
         let inertiaInterval = null;
 
         bpmDisplay.addEventListener('touchstart', (e) => {
-            // Stop any ongoing inertia
+            // Stop any ongoing inertia immediately
             if (inertiaInterval) {
                 clearInterval(inertiaInterval);
                 inertiaInterval = null;
