@@ -27,7 +27,7 @@
             flex-direction: column;
             gap: 20px;
             width: 80%;
-            max-width: 350px; /* Increased for larger buttons */
+            max-width: 350px; /* Matches button width */
         }
         .controls {
             display: flex;
@@ -39,16 +39,22 @@
             margin-top: 15px; /* Add spacing above "Metronome BPM" */
         }
         button {
-            padding: 15px 20px; /* Increased horizontal padding */
-            font-size: 16px; /* Slightly smaller for better fit */
+            padding: 15px 20px;
+            font-size: 16px;
+            line-height: 1.5; /* Balances vertical centering */
             border-radius: 8px;
             border: none;
-            width: 100%; /* Full width for consistency */
-            max-width: 350px; /* Increased for text visibility */
+            width: 100%;
+            max-width: 350px;
             background-color: #007aff;
             color: white;
             cursor: pointer;
             transition: background-color 0.2s;
+            text-align: center; /* Explicit horizontal centering */
+            display: flex; /* Flexbox for precise centering */
+            justify-content: center; /* Horizontal centering */
+            align-items: center; /* Vertical centering */
+            box-sizing: border-box; /* Includes padding in width */
         }
         button:hover {
             background-color: #005bb5;
@@ -76,7 +82,7 @@
             align-items: center;
             gap: 10px;
             width: 80%;
-            max-width: 350px; /* Aligned with buttons */
+            max-width: 350px;
         }
         .bpm-display {
             display: flex;
