@@ -69,28 +69,18 @@
             border-radius: 8px;
             padding: 10px;
             width: 100%;
+            touch-action: none; /* Prevent default scrolling */
         }
         .bpm-value {
             font-size: 16px;
             color: #666;
             margin: 5px 0;
+            transition: all 0.2s ease; /* Smooth transition for BPM changes */
         }
         .bpm-value.selected {
             font-size: 24px;
             font-weight: bold;
             color: #007aff;
-        }
-        .bpm-buttons {
-            display: flex;
-            gap: 10px;
-            width: 100%;
-        }
-        .bpm-button {
-            flex: 1;
-            padding: 10px;
-            font-size: 16px;
-            background-color: #e0e0e0;
-            color: #333;
         }
     </style>
 </head>
@@ -101,14 +91,10 @@
     <div class="controls">
         <label for="bpm">Metronome BPM:</label>
         <div class="bpm-wheel">
-            <div class="bpm-display">
+            <div class="bpm-display" id="bpm-display">
                 <div id="bpm-prev" class="bpm-value"></div>
                 <div id="bpm-selected" class="bpm-value selected"></div>
                 <div id="bpm-next" class="bpm-value"></div>
-            </div>
-            <div class="bpm-buttons">
-                <button class="bpm-button" onclick="changeBPM(1)">Up</button>
-                <button class="bpm-button" onclick="changeBPM(-1)">Down</button>
             </div>
         </div>
         <button id="startBtn" onclick="startAudio()">Start Audio</button>
@@ -126,6 +112,7 @@
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
         const statusDiv = document.getElementById('status');
+        const bpmDisplay = document.getElementById('bpm-display');
         const bpmPrev = document.getElementById('bpm-prev');
         const bpmSelected = document.getElementById('bpm-selected');
         const bpmNext = document.getElementById('bpm-next');
@@ -143,6 +130,32 @@
             bpm = Math.min(240, Math.max(30, bpm + delta));
             updateBPMDisplay();
         }
+
+        // Touch scrolling for BPM
+        let touchStartY = 0;
+        let touchDeltaY = 0;
+        const swipeThreshold = 50; // Pixels to trigger BPM change
+
+        bpmDisplay.addEventListener('touchstart', (e) => {
+            touchStartY = e.touches[0].clientY;
+            touchDeltaY = 0;
+            e.preventDefault(); // Prevent page scrolling
+        });
+
+        bpmDisplay.addEventListener('touchmove', (e) => {
+            touchDeltaY = touchStartY - e.touches[0].clientY;
+            e.preventDefault(); // Prevent page scrolling
+        });
+
+        bpmDisplay.addEventListener('touchend', () => {
+            if (Math.abs(touchDeltaY) > swipeThreshold) {
+                if (touchDeltaY > 0) {
+                    changeBPM(1); // Swipe up to increase BPM
+                } else {
+                    changeBPM(-1); // Swipe down to decrease BPM
+                }
+            }
+        });
 
         async function startAudio() {
             if (isRunning) return;
