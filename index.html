@@ -53,6 +53,11 @@
             color: #333;
             max-width: 90%;
         }
+        #status {
+            font-size: 14px;
+            color: #555;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -64,6 +69,7 @@
         <button id="startBtn" onclick="startAudio()">Start Audio</button>
         <button id="stopBtn" onclick="stopAudio()" disabled>Stop Audio</button>
     </div>
+    <div id="status">Status: Waiting to start</div>
 
     <script>
         let audioContext;
@@ -73,12 +79,14 @@
         let stream;
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
+        const statusDiv = document.getElementById('status');
 
         async function startAudio() {
             if (isRunning) return;
             isRunning = true;
             startBtn.disabled = true;
             stopBtn.disabled = false;
+            statusDiv.textContent = 'Status: Initializing audio...';
 
             // Initialize AudioContext (iOS requires user gesture)
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -98,15 +106,17 @@
                 sourceNode = audioContext.createMediaStreamSource(stream);
 
                 // Create a gain node to mix microphone and metronome
-                const gainNode = audioContext.createGain();
-                gainNode.gain.value = 1.0; // Adjust microphone volume
-                sourceNode.connect(gainNode);
-                gainNode.connect(audioContext.destination);
+                const micGainNode = audioContext.createGain();
+                micGainNode.gain.value = 0.8; // Slightly lower mic volume to avoid overpowering click
+                sourceNode.connect(micGainNode);
+                micGainNode.connect(audioContext.destination);
 
+                statusDiv.textContent = 'Status: Microphone and metronome active';
                 // Start metronome
                 startMetronome();
             } catch (err) {
                 console.error('Error accessing microphone:', err);
+                statusDiv.textContent = 'Status: Microphone access failed';
                 alert('Could not access microphone. Please allow microphone access and ensure headphones are connected.');
                 stopAudio();
             }
@@ -145,6 +155,7 @@
             isRunning = false;
             startBtn.disabled = false;
             stopBtn.disabled = true;
+            statusDiv.textContent = 'Status: Audio stopped';
 
             // Stop metronome
             if (metronomeInterval) {
@@ -172,6 +183,11 @@
             if (document.visibilityState === 'visible' && isRunning && audioContext.state === 'suspended') {
                 audioContext.resume();
             }
+        });
+
+        // Monitor audio output device (for debugging)
+        navigator.mediaDevices.addEventListener('devicechange', () => {
+            statusDiv.textContent = 'Status: Audio device changed, ensure headphones are selected';
         });
     </script>
 </body>
