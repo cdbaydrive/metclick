@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Microphone with Metronome (iPhone)</title>
+    <style>
+        body {
+            font-family: -apple-system, Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+            margin: 0;
+            background-color: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+        button, input {
+            padding: 12px 20px;
+            font-size: 18px;
+            border-radius: 8px;
+            border: none;
+            width: 80%;
+            max-width: 300px;
+        }
+        button {
+            background-color: #007aff;
+            color: white;
+            cursor: pointer;
+        }
+        button:disabled {
+            background-color: #cccccc;
+        }
+        input {
+            background-color: white;
+            border: 1px solid #ccc;
+            text-align: center;
+        }
+        p {
+            font-size: 16px;
+            color: #333;
+            max-width: 90%;
+        }
+    </style>
+</head>
+<body>
+    <h1>Microphone + Metronome</h1>
+    <p>Connect your Bluetooth headphones via iPhone settings. Allow microphone access when prompted.</p>
+    <div class="controls">
+        <label for="bpm">Metronome BPM:</label>
+        <input type="number" id="bpm" value="120" min="30" max="240">
+        <button id="startBtn" onclick="startAudio()">Start Audio</button>
+        <button id="stopBtn" onclick="stopAudio()" disabled>Stop Audio</button>
+    </div>
+
+    <script>
+        let audioContext;
+        let metronomeInterval;
+        let isRunning = false;
+        let sourceNode;
+        let stream;
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+
+        async function startAudio() {
+            if (isRunning) return;
+            isRunning = true;
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+
+            // Initialize AudioContext (iOS requires user gesture)
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioContext.state === 'suspended') {
+                await audioContext.resume();
+            }
+
+            // Access microphone
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    }
+                });
+                sourceNode = audioContext.createMediaStreamSource(stream);
+
+                // Create a gain node to mix microphone and metronome
+                const gainNode = audioContext.createGain();
+                gainNode.gain.value = 1.0; // Adjust microphone volume
+                sourceNode.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+
+                // Start metronome
+                startMetronome();
+            } catch (err) {
+                console.error('Error accessing microphone:', err);
+                alert('Could not access microphone. Please allow microphone access and ensure headphones are connected.');
+                stopAudio();
+            }
+        }
+
+        function startMetronome() {
+            const bpm = parseInt(document.getElementById('bpm').value) || 120;
+            const interval = 60 / bpm * 1000; // Convert BPM to milliseconds
+
+            // Generate metronome click
+            function playClick() {
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(1000, audioContext.currentTime); // 1000 Hz click
+                gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.05); // Quick decay
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.05); // Short click
+            }
+
+            // Schedule clicks
+            playClick(); // Play first click immediately
+            metronomeInterval = setInterval(() => {
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+                playClick();
+            }, interval);
+        }
+
+        function stopAudio() {
+            if (!isRunning) return;
+            isRunning = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+
+            // Stop metronome
+            if (metronomeInterval) {
+                clearInterval(metronomeInterval);
+            }
+
+            // Stop microphone stream
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+
+            // Close AudioContext
+            if (audioContext) {
+                audioContext.close();
+            }
+        }
+
+        // Handle page unload to clean up
+        window.addEventListener('beforeunload', () => {
+            stopAudio();
+        });
+
+        // Handle visibility change (iOS may suspend AudioContext)
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && isRunning && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+        });
+    </script>
+</body>
+</html>
