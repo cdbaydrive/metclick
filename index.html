@@ -27,6 +27,9 @@
             align-items: center;
             gap: 15px;
         }
+        .controls label {
+            margin-top: 15px; /* Add spacing above "Metronome BPM" */
+        }
         button {
             padding: 12px 20px;
             font-size: 18px;
@@ -46,9 +49,6 @@
             color: #333;
             max-width: 90%;
             margin: 5px 0;
-        }
-        p:nth-child(2) {
-            margin-bottom: 15px; /* Add spacing below "Allow microphone access" */
         }
         #status {
             font-size: 14px;
@@ -78,7 +78,7 @@
             font-size: 16px;
             color: #666;
             margin: 5px 0;
-            transition: all 0.1s ease; /* Faster transition for BPM changes */
+            transition: all 0.05s ease; /* Even faster transition */
         }
         .bpm-value.selected {
             font-size: 24px;
@@ -134,29 +134,58 @@
             updateBPMDisplay();
         }
 
-        // Touch scrolling for BPM
+        // Touch scrolling with inertia for BPM
         let touchStartY = 0;
-        let touchDeltaY = 0;
-        const swipeThreshold = 30; // Reduced for more reactive swipes
+        let lastTouchY = 0;
+        let lastTouchTime = 0;
+        let velocity = 0;
+        let inertiaInterval = null;
 
         bpmDisplay.addEventListener('touchstart', (e) => {
+            // Stop any ongoing inertia
+            if (inertiaInterval) {
+                clearInterval(inertiaInterval);
+                inertiaInterval = null;
+            }
             touchStartY = e.touches[0].clientY;
-            touchDeltaY = 0;
+            lastTouchY = touchStartY;
+            lastTouchTime = Date.now();
+            velocity = 0;
             e.preventDefault(); // Prevent page scrolling
         });
 
         bpmDisplay.addEventListener('touchmove', (e) => {
-            touchDeltaY = touchStartY - e.touches[0].clientY;
+            const currentY = e.touches[0].clientY;
+            const currentTime = Date.now();
+            const deltaY = lastTouchY - currentY;
+            const deltaTime = (currentTime - lastTouchTime) || 1; // Avoid division by zero
+            velocity = deltaY / deltaTime; // Pixels per millisecond
+            lastTouchY = currentY;
+            lastTouchTime = currentTime;
+
+            // Immediate BPM change based on swipe
+            const bpmChange = Math.round(deltaY / 20); // Adjust sensitivity (20 pixels per BPM)
+            if (bpmChange !== 0) {
+                changeBPM(bpmChange);
+            }
             e.preventDefault(); // Prevent page scrolling
         });
 
         bpmDisplay.addEventListener('touchend', () => {
-            if (Math.abs(touchDeltaY) > swipeThreshold) {
-                if (touchDeltaY > 0) {
-                    changeBPM(1); // Swipe up to increase BPM
-                } else {
-                    changeBPM(-1); // Swipe down to decrease BPM
-                }
+            // Apply inertia based on velocity
+            if (Math.abs(velocity) > 0.1) { // Only apply inertia for significant velocity
+                let currentVelocity = velocity * 1000; // Scale to pixels per second
+                inertiaInterval = setInterval(() => {
+                    const bpmChange = Math.round(currentVelocity / 200); // Adjust inertia sensitivity
+                    if (bpmChange !== 0) {
+                        changeBPM(bpmChange);
+                    }
+                    currentVelocity *= 0.95; // Decelerate (friction)
+                    if (Math.abs(currentVelocity) < 10) { // Stop when velocity is low
+                        clearInterval(inertiaInterval);
+                        inertiaInterval = null;
+                    }
+                }, 50); // Update every 50ms
             }
         });
 
