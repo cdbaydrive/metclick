@@ -47,6 +47,9 @@
             max-width: 90%;
             margin: 5px 0;
         }
+        p:nth-child(2) {
+            margin-bottom: 15px; /* Add spacing below "Allow microphone access" */
+        }
         #status {
             font-size: 14px;
             color: #555;
@@ -75,7 +78,7 @@
             font-size: 16px;
             color: #666;
             margin: 5px 0;
-            transition: all 0.2s ease; /* Smooth transition for BPM changes */
+            transition: all 0.1s ease; /* Faster transition for BPM changes */
         }
         .bpm-value.selected {
             font-size: 24px;
@@ -86,10 +89,10 @@
 </head>
 <body>
     <h1>Metclick</h1>
-    <p>Connect your Bluetooth headphones via iPhone settings.</p>
+    <p>Connect Headphones</p>
     <p>Allow microphone access when prompted.</p>
     <div class="controls">
-        <label for="bpm">Metronome BPM:</label>
+        <label for="bpm">Metronome BPM</label>
         <div class="bpm-wheel">
             <div class="bpm-display" id="bpm-display">
                 <div id="bpm-prev" class="bpm-value"></div>
@@ -134,7 +137,7 @@
         // Touch scrolling for BPM
         let touchStartY = 0;
         let touchDeltaY = 0;
-        const swipeThreshold = 50; // Pixels to trigger BPM change
+        const swipeThreshold = 30; // Reduced for more reactive swipes
 
         bpmDisplay.addEventListener('touchstart', (e) => {
             touchStartY = e.touches[0].clientY;
