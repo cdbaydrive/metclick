@@ -27,7 +27,7 @@
             flex-direction: column;
             gap: 20px;
             width: 80%;
-            max-width: 350px; /* Matches button width */
+            max-width: 350px;
         }
         .controls {
             display: flex;
@@ -36,12 +36,12 @@
             gap: 15px;
         }
         .controls label {
-            margin-top: 15px; /* Add spacing above "Metronome BPM" */
+            margin-top: 15px;
         }
         button {
             padding: 15px 20px;
             font-size: 16px;
-            line-height: 1.5; /* Balances vertical centering */
+            line-height: 1.5;
             border-radius: 8px;
             border: none;
             width: 100%;
@@ -50,11 +50,11 @@
             color: white;
             cursor: pointer;
             transition: background-color 0.2s;
-            text-align: center; /* Explicit horizontal centering */
-            display: flex; /* Flexbox for precise centering */
-            justify-content: center; /* Horizontal centering */
-            align-items: center; /* Vertical centering */
-            box-sizing: border-box; /* Includes padding in width */
+            text-align: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-sizing: border-box;
         }
         button:hover {
             background-color: #005bb5;
@@ -93,13 +93,13 @@
             border-radius: 8px;
             padding: 10px;
             width: 100%;
-            touch-action: none; /* Prevent default scrolling */
+            touch-action: none;
         }
         .bpm-value {
             font-size: 16px;
             color: #666;
             margin: 5px 0;
-            transition: all 0.05s ease; /* Fast transition */
+            transition: all 0.05s ease;
         }
         .bpm-value.selected {
             font-size: 24px;
@@ -123,19 +123,20 @@
         let stream;
         let bpm = 120;
         let inertiaInterval = null;
+        let beatCount = 0; // Tracks beats for 4/4 time signature
 
         // Platform-specific parameters
         const platformConfig = {
             ios: {
-                swipeSensitivity: 20, // Pixels per BPM
-                inertiaSensitivity: 200, // Pixels/s per BPM
-                inertiaIntervalMs: 50, // Update interval
+                swipeSensitivity: 20,
+                inertiaSensitivity: 200,
+                inertiaIntervalMs: 50,
                 showSamsungInstructions: false
             },
             android: {
-                swipeSensitivity: 15, // Pixels per BPM (Samsung optimized)
-                inertiaSensitivity: 150, // Pixels/s per BPM
-                inertiaIntervalMs: 30, // Update interval (Samsung 120Hz)
+                swipeSensitivity: 15,
+                inertiaSensitivity: 150,
+                inertiaIntervalMs: 30,
                 showSamsungInstructions: /samsung/i.test(navigator.userAgent)
             }
         };
@@ -163,7 +164,8 @@
                         <div id="bpm-next" class="bpm-value"></div>
                     </div>
                 </div>
-                <button id="startBtn">Start Audio</button>
+                <button id="startWithClickBtn">Start with Click</button>
+                <button id="startWithoutClickBtn">Start without Click</button>
                 <button id="stopBtn" disabled>Stop Audio</button>
             </div>
             <div id="status">Status: Waiting to start</div>
@@ -188,7 +190,8 @@
 
         // Initialize app logic
         function initApp() {
-            const startBtn = document.getElementById('startBtn');
+            const startWithClickBtn = document.getElementById('startWithClickBtn');
+            const startWithoutClickBtn = document.getElementById('startWithoutClickBtn');
             const stopBtn = document.getElementById('stopBtn');
             const statusDiv = document.getElementById('status');
             const bpmDisplay = document.getElementById('bpm-display');
@@ -208,7 +211,7 @@
             function changeBPM(delta) {
                 bpm = Math.min(240, Math.max(30, bpm + delta));
                 updateBPMDisplay();
-                if (isRunning) {
+                if (isRunning && metronomeInterval) {
                     restartMetronome();
                 }
             }
@@ -217,6 +220,7 @@
             function restartMetronome() {
                 if (metronomeInterval) {
                     clearInterval(metronomeInterval);
+                    metronomeInterval = null;
                 }
                 startMetronome();
             }
@@ -273,10 +277,11 @@
             });
 
             // Audio handling
-            async function startAudio() {
+            async function startAudio(withClick) {
                 if (isRunning) return;
                 isRunning = true;
-                startBtn.disabled = true;
+                startWithClickBtn.disabled = true;
+                startWithoutClickBtn.disabled = true;
                 stopBtn.disabled = false;
                 statusDiv.textContent = 'Status: Initializing audio...';
 
@@ -300,8 +305,12 @@
                     sourceNode.connect(micGainNode);
                     micGainNode.connect(audioContext.destination);
 
-                    statusDiv.textContent = 'Status: Microphone and metronome active';
-                    startMetronome();
+                    statusDiv.textContent = `Status: Microphone ${withClick ? 'and metronome' : ''} active`;
+                    if (withClick) {
+                        startMetronome();
+                    } else {
+                        statusDiv.textContent = 'Status: Microphone active';
+                    }
                 } catch (err) {
                     console.error('Error accessing microphone:', err);
                     statusDiv.textContent = 'Status: Microphone access failed';
@@ -312,38 +321,46 @@
 
             function startMetronome() {
                 const interval = 60 / bpm * 1000;
+                beatCount = 0; // Reset beat counter
 
-                function playClick() {
+                function playClick(isFirstBeat) {
                     const oscillator = audioContext.createOscillator();
                     const gainNode = audioContext.createGain();
                     oscillator.type = 'sine';
-                    oscillator.frequency.setValueAtTime(1000, audioContext.currentTime);
+                    oscillator.frequency.setValueAtTime(isFirstBeat ? 1500 : 1000, audioContext.currentTime);
                     gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
-                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.05);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + (isFirstBeat ? 0.07 : 0.05));
                     oscillator.connect(gainNode);
                     gainNode.connect(audioContext.destination);
                     oscillator.start(audioContext.currentTime);
-                    oscillator.stop(audioContext.currentTime + 0.05);
+                    oscillator.stop(audioContext.currentTime + (isFirstBeat ? 0.07 : 0.05));
                 }
 
-                playClick();
+                // Play first click immediately
+                playClick(true); // First beat of measure
+                beatCount = 1;
+
                 metronomeInterval = setInterval(() => {
                     if (audioContext.state === 'suspended') {
                         audioContext.resume();
                     }
-                    playClick();
+                    const isFirstBeat = beatCount % 4 === 0; // First beat every 4th click
+                    playClick(isFirstBeat);
+                    beatCount = (beatCount + 1) % 4; // Cycle 0,1,2,3
                 }, interval);
             }
 
             function stopAudio() {
                 if (!isRunning) return;
                 isRunning = false;
-                startBtn.disabled = false;
+                startWithClickBtn.disabled = false;
+                startWithoutClickBtn.disabled = false;
                 stopBtn.disabled = true;
                 statusDiv.textContent = 'Status: Audio stopped';
 
                 if (metronomeInterval) {
                     clearInterval(metronomeInterval);
+                    metronomeInterval = null;
                 }
 
                 if (stream) {
@@ -356,7 +373,8 @@
             }
 
             // Event listeners
-            startBtn.addEventListener('click', startAudio);
+            startWithClickBtn.addEventListener('click', () => startAudio(true));
+            startWithoutClickBtn.addEventListener('click', () => startAudio(false));
             stopBtn.addEventListener('click', stopAudio);
 
             window.addEventListener('beforeunload', stopAudio);
