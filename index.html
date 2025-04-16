@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Metclick</title>
     <style>
         body {
@@ -16,10 +16,18 @@
             align-items: center;
             justify-content: center;
             height: 100vh;
+            touch-action: manipulation;
         }
         h1 {
             font-size: 24px;
             margin-bottom: 20px;
+        }
+        .button-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 80%;
+            max-width: 300px;
         }
         .controls {
             display: flex;
@@ -31,7 +39,7 @@
             margin-top: 15px; /* Add spacing above "Metronome BPM" */
         }
         button {
-            padding: 12px 20px;
+            padding: 15px;
             font-size: 18px;
             border-radius: 8px;
             border: none;
@@ -40,6 +48,13 @@
             background-color: #007aff;
             color: white;
             cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #005bb5;
+        }
+        button:active {
+            background-color: #003087;
         }
         button:disabled {
             background-color: #cccccc;
@@ -78,235 +93,281 @@
             font-size: 16px;
             color: #666;
             margin: 5px 0;
-            transition: all 0.05s ease; /* Even faster transition */
+            transition: all 0.05s ease; /* Fast transition */
         }
         .bpm-value.selected {
             font-size: 24px;
             font-weight: bold;
             color: #007aff;
         }
+        #samsung-instructions {
+            display: none;
+        }
     </style>
 </head>
 <body>
-    <h1>Metclick</h1>
-    <p>Connect Headphones</p>
-    <p>Allow microphone access when prompted.</p>
-    <div class="controls">
-        <label for="bpm">Metronome BPM</label>
-        <div class="bpm-wheel">
-            <div class="bpm-display" id="bpm-display">
-                <div id="bpm-prev" class="bpm-value"></div>
-                <div id="bpm-selected" class="bpm-value selected"></div>
-                <div id="bpm-next" class="bpm-value"></div>
-            </div>
-        </div>
-        <button id="startBtn" onclick="startAudio()">Start Audio</button>
-        <button id="stopBtn" onclick="stopAudio()" disabled>Stop Audio</button>
-    </div>
-    <div id="status">Status: Waiting to start</div>
+    <div id="app"></div>
 
     <script>
+        let platform = null; // null (landing), 'ios', or 'android'
         let audioContext;
         let metronomeInterval;
         let isRunning = false;
         let sourceNode;
         let stream;
         let bpm = 120;
-        const startBtn = document.getElementById('startBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const statusDiv = document.getElementById('status');
-        const bpmDisplay = document.getElementById('bpm-display');
-        const bpmPrev = document.getElementById('bpm-prev');
-        const bpmSelected = document.getElementById('bpm-selected');
-        const bpmNext = document.getElementById('bpm-next');
-
-        // Initialize BPM display
-        function updateBPMDisplay() {
-            bpmPrev.textContent = bpm - 1;
-            bpmSelected.textContent = bpm;
-            bpmNext.textContent = bpm + 1;
-        }
-        updateBPMDisplay();
-
-        // Change BPM with bounds checking and update metronome
-        function changeBPM(delta) {
-            bpm = Math.min(240, Math.max(30, bpm + delta));
-            updateBPMDisplay();
-            if (isRunning) {
-                restartMetronome(); // Update metronome speed if running
-            }
-        }
-
-        // Restart metronome with current BPM
-        function restartMetronome() {
-            if (metronomeInterval) {
-                clearInterval(metronomeInterval);
-            }
-            startMetronome();
-        }
-
-        // Touch scrolling with inertia for BPM
-        let touchStartY = 0;
-        let lastTouchY = 0;
-        let lastTouchTime = 0;
-        let velocity = 0;
         let inertiaInterval = null;
 
-        bpmDisplay.addEventListener('touchstart', (e) => {
-            // Stop any ongoing inertia immediately
-            if (inertiaInterval) {
-                clearInterval(inertiaInterval);
-                inertiaInterval = null;
+        // Platform-specific parameters
+        const platformConfig = {
+            ios: {
+                swipeSensitivity: 20, // Pixels per BPM
+                inertiaSensitivity: 200, // Pixels/s per BPM
+                inertiaIntervalMs: 50, // Update interval
+                showSamsungInstructions: false
+            },
+            android: {
+                swipeSensitivity: 15, // Pixels per BPM (Samsung optimized)
+                inertiaSensitivity: 150, // Pixels/s per BPM
+                inertiaIntervalMs: 30, // Update interval (Samsung 120Hz)
+                showSamsungInstructions: /samsung/i.test(navigator.userAgent)
             }
-            touchStartY = e.touches[0].clientY;
-            lastTouchY = touchStartY;
-            lastTouchTime = Date.now();
-            velocity = 0;
-            e.preventDefault(); // Prevent page scrolling
-        });
+        };
 
-        bpmDisplay.addEventListener('touchmove', (e) => {
-            const currentY = e.touches[0].clientY;
-            const currentTime = Date.now();
-            const deltaY = lastTouchY - currentY;
-            const deltaTime = (currentTime - lastTouchTime) || 1; // Avoid division by zero
-            velocity = deltaY / deltaTime; // Pixels per millisecond
-            lastTouchY = currentY;
-            lastTouchTime = currentTime;
+        // Templates
+        const landingTemplate = `
+            <h1>Metclick</h1>
+            <div class="button-container">
+                <button onclick="selectPlatform('ios')">iOS</button>
+                <button onclick="selectPlatform('android')">Android</button>
+            </div>
+        `;
 
-            // Immediate BPM change based on swipe
-            const bpmChange = Math.round(deltaY / 20); // Adjust sensitivity (20 pixels per BPM)
-            if (bpmChange !== 0) {
-                changeBPM(bpmChange);
-            }
-            e.preventDefault(); // Prevent page scrolling
-        });
+        const appTemplate = (showSamsungInstructions) => `
+            <h1>Metclick</h1>
+            <p>Connect Headphones</p>
+            <p>Allow microphone access when prompted.</p>
+            ${showSamsungInstructions ? '<p id="samsung-instructions">For best performance, disable battery optimization for this browser in Settings > Apps > [Browser] > Battery > Unrestricted.</p>' : ''}
+            <div class="controls">
+                <label for="bpm">Metronome BPM</label>
+                <div class="bpm-wheel">
+                    <div class="bpm-display" id="bpm-display">
+                        <div id="bpm-prev" class="bpm-value"></div>
+                        <div id="bpm-selected" class="bpm-value selected"></div>
+                        <div id="bpm-next" class="bpm-value"></div>
+                    </div>
+                </div>
+                <button id="startBtn">Start Audio</button>
+                <button id="stopBtn" disabled>Stop Audio</button>
+            </div>
+            <div id="status">Status: Waiting to start</div>
+        `;
 
-        bpmDisplay.addEventListener('touchend', () => {
-            // Apply inertia based on velocity
-            if (Math.abs(velocity) > 0.1) { // Only apply inertia for significant velocity
-                let currentVelocity = velocity * 1000; // Scale to pixels per second
-                inertiaInterval = setInterval(() => {
-                    const bpmChange = Math.round(currentVelocity / 200); // Adjust inertia sensitivity
-                    if (bpmChange !== 0) {
-                        changeBPM(bpmChange);
-                    }
-                    currentVelocity *= 0.95; // Decelerate (friction)
-                    if (Math.abs(currentVelocity) < 10) { // Stop when velocity is low
-                        clearInterval(inertiaInterval);
-                        inertiaInterval = null;
-                    }
-                }, 50); // Update every 50ms
-            }
-        });
-
-        async function startAudio() {
-            if (isRunning) return;
-            isRunning = true;
-            startBtn.disabled = true;
-            stopBtn.disabled = false;
-            statusDiv.textContent = 'Status: Initializing audio...';
-
-            // Initialize AudioContext (iOS requires user gesture)
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioContext.state === 'suspended') {
-                await audioContext.resume();
-            }
-
-            // Access microphone
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({ 
-                    audio: {
-                        echoCancellation: false,
-                        noiseSuppression: false,
-                        autoGainControl: false
-                    }
-                });
-                sourceNode = audioContext.createMediaStreamSource(stream);
-
-                // Create a gain node to mix microphone and metronome
-                const micGainNode = audioContext.createGain();
-                micGainNode.gain.value = 0.8; // Slightly lower mic volume to avoid overpowering click
-                sourceNode.connect(micGainNode);
-                micGainNode.connect(audioContext.destination);
-
-                statusDiv.textContent = 'Status: Microphone and metronome active';
-                // Start metronome
-                startMetronome();
-            } catch (err) {
-                console.error('Error accessing microphone:', err);
-                statusDiv.textContent = 'Status: Microphone access failed';
-                alert('Could not access microphone. Please allow microphone access and ensure headphones are connected.');
-                stopAudio();
+        // Render function
+        function render() {
+            const appDiv = document.getElementById('app');
+            if (!platform) {
+                appDiv.innerHTML = landingTemplate;
+            } else {
+                appDiv.innerHTML = appTemplate(platformConfig[platform].showSamsungInstructions);
+                initApp();
             }
         }
 
-        function startMetronome() {
-            const interval = 60 / bpm * 1000; // Convert BPM to milliseconds
+        // Platform selection
+        function selectPlatform(selectedPlatform) {
+            platform = selectedPlatform;
+            render();
+        }
 
-            // Generate metronome click
-            function playClick() {
-                const oscillator = audioContext.createOscillator();
-                const gainNode = audioContext.createGain();
-                oscillator.type = 'sine';
-                oscillator.frequency.setValueAtTime(1000, audioContext.currentTime); // 1000 Hz click
-                gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.05); // Quick decay
-                oscillator.connect(gainNode);
-                gainNode.connect(audioContext.destination);
-                oscillator.start(audioContext.currentTime);
-                oscillator.stop(audioContext.currentTime + 0.05); // Short click
+        // Initialize app logic
+        function initApp() {
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            const statusDiv = document.getElementById('status');
+            const bpmDisplay = document.getElementById('bpm-display');
+            const bpmPrev = document.getElementById('bpm-prev');
+            const bpmSelected = document.getElementById('bpm-selected');
+            const bpmNext = document.getElementById('bpm-next');
+
+            // Initialize BPM display
+            function updateBPMDisplay() {
+                bpmPrev.textContent = bpm - 1;
+                bpmSelected.textContent = bpm;
+                bpmNext.textContent = bpm + 1;
+            }
+            updateBPMDisplay();
+
+            // Change BPM with bounds checking and update metronome
+            function changeBPM(delta) {
+                bpm = Math.min(240, Math.max(30, bpm + delta));
+                updateBPMDisplay();
+                if (isRunning) {
+                    restartMetronome();
+                }
             }
 
-            // Schedule clicks
-            playClick(); // Play first click immediately
-            metronomeInterval = setInterval(() => {
+            // Restart metronome with current BPM
+            function restartMetronome() {
+                if (metronomeInterval) {
+                    clearInterval(metronomeInterval);
+                }
+                startMetronome();
+            }
+
+            // Touch scrolling with inertia
+            let touchStartY = 0;
+            let lastTouchY = 0;
+            let lastTouchTime = 0;
+            let velocity = 0;
+
+            bpmDisplay.addEventListener('touchstart', (e) => {
+                if (inertiaInterval) {
+                    clearInterval(inertiaInterval);
+                    inertiaInterval = null;
+                }
+                touchStartY = e.touches[0].clientY;
+                lastTouchY = touchStartY;
+                lastTouchTime = Date.now();
+                velocity = 0;
+                e.preventDefault();
+            });
+
+            bpmDisplay.addEventListener('touchmove', (e) => {
+                const currentY = e.touches[0].clientY;
+                const currentTime = Date.now();
+                const deltaY = lastTouchY - currentY;
+                const deltaTime = (currentTime - lastTouchTime) || 1;
+                velocity = deltaY / deltaTime;
+                lastTouchY = currentY;
+                lastTouchTime = currentTime;
+
+                const bpmChange = Math.round(deltaY / platformConfig[platform].swipeSensitivity);
+                if (bpmChange !== 0) {
+                    changeBPM(bpmChange);
+                }
+                e.preventDefault();
+            });
+
+            bpmDisplay.addEventListener('touchend', () => {
+                if (Math.abs(velocity) > 0.1) {
+                    let currentVelocity = velocity * 1000;
+                    inertiaInterval = setInterval(() => {
+                        const bpmChange = Math.round(currentVelocity / platformConfig[platform].inertiaSensitivity);
+                        if (bpmChange !== 0) {
+                            changeBPM(bpmChange);
+                        }
+                        currentVelocity *= 0.95;
+                        if (Math.abs(currentVelocity) < 10) {
+                            clearInterval(inertiaInterval);
+                            inertiaInterval = null;
+                        }
+                    }, platformConfig[platform].inertiaIntervalMs);
+                }
+            });
+
+            // Audio handling
+            async function startAudio() {
+                if (isRunning) return;
+                isRunning = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                statusDiv.textContent = 'Status: Initializing audio...';
+
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                }
+
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: {
+                            echoCancellation: false,
+                            noiseSuppression: false,
+                            autoGainControl: false
+                        }
+                    });
+                    sourceNode = audioContext.createMediaStreamSource(stream);
+
+                    const micGainNode = audioContext.createGain();
+                    micGainNode.gain.value = 0.8;
+                    sourceNode.connect(micGainNode);
+                    micGainNode.connect(audioContext.destination);
+
+                    statusDiv.textContent = 'Status: Microphone and metronome active';
+                    startMetronome();
+                } catch (err) {
+                    console.error('Error accessing microphone:', err);
+                    statusDiv.textContent = 'Status: Microphone access failed';
+                    alert('Could not access microphone. Please allow microphone access and ensure headphones are connected.');
+                    stopAudio();
+                }
+            }
+
+            function startMetronome() {
+                const interval = 60 / bpm * 1000;
+
+                function playClick() {
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(1000, audioContext.currentTime);
+                    gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.05);
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+                    oscillator.start(audioContext.currentTime);
+                    oscillator.stop(audioContext.currentTime + 0.05);
+                }
+
+                playClick();
+                metronomeInterval = setInterval(() => {
+                    if (audioContext.state === 'suspended') {
+                        audioContext.resume();
+                    }
+                    playClick();
+                }, interval);
+            }
+
+            function stopAudio() {
+                if (!isRunning) return;
+                isRunning = false;
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                statusDiv.textContent = 'Status: Audio stopped';
+
+                if (metronomeInterval) {
+                    clearInterval(metronomeInterval);
+                }
+
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+
+                if (audioContext) {
+                    audioContext.close();
+                }
+            }
+
+            // Event listeners
+            startBtn.addEventListener('click', startAudio);
+            stopBtn.addEventListener('click', stopAudio);
+
+            window.addEventListener('beforeunload', stopAudio);
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && isRunning && audioContext?.state === 'suspended') {
                     audioContext.resume();
                 }
-                playClick();
-            }, interval);
+            });
+
+            navigator.mediaDevices.addEventListener('devicechange', () => {
+                statusDiv.textContent = 'Status: Audio device changed, ensure headphones are selected';
+            });
         }
 
-        function stopAudio() {
-            if (!isRunning) return;
-            isRunning = false;
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
-            statusDiv.textContent = 'Status: Audio stopped';
-
-            // Stop metronome
-            if (metronomeInterval) {
-                clearInterval(metronomeInterval);
-            }
-
-            // Stop microphone stream
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
-
-            // Close AudioContext
-            if (audioContext) {
-                audioContext.close();
-            }
-        }
-
-        // Handle page unload to clean up
-        window.addEventListener('beforeunload', () => {
-            stopAudio();
-        });
-
-        // Handle visibility change (iOS may suspend AudioContext)
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && isRunning && audioContext.state === 'suspended') {
-                audioContext.resume();
-            }
-        });
-
-        // Monitor audio output device (for debugging)
-        navigator.mediaDevices.addEventListener('devicechange', () => {
-            statusDiv.textContent = 'Status: Audio device changed, ensure headphones are selected';
-        });
+        // Initial render
+        render();
     </script>
 </body>
 </html>
